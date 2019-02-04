@@ -1,3 +1,66 @@
+
+[How to compile to ESP32](https://acassis.wordpress.com/2018/01/04/running-nuttx-on-esp32-board/)
+
+```
+$ sudo pip install esptool
+```
+
+##Install toolchain:
+
+Two choises:
+
+Download the pre-build toolchain:
+
+https://esp-idf.readthedocs.io/en/latest/get-started/index.html
+
+Or compile it from source code:
+```
+$ git clone -b xtensa-1.22.x https://github.com/espressif/crosstool-NG.git
+$ cd crosstool-NG
+$ ./bootstrap && ./configure --prefix=$PWD && make install
+$ ./ct-ng xtensa-esp32-elf
+$ unset LD_LIBRARY_PATH
+$ ./ct-ng build
+$ chmod -R u+w builds/xtensa-esp32-elf
+$ sudo cp -a builds/xtensa-esp32-elf/* /usr/local/
+```
+
+##Compile the NuttX:
+
+```
+$ mkdir ~/nuttxspace
+$ cd ~/nuttxspace
+$ git clone https://github.com/bhgv/nuttx-esp32-longjmp nuttx
+$ git clone https://github.com/bhgv/nuttx_apps_lua apps
+$ cd nuttx
+$ make distclean
+$ ./tools/configure.sh esp32-core/nsh
+$ # here you may run 'make qconfig &' to specify your own configuration before the build
+$ # to enable or disable Lua you should go to examples->lua section.
+$ # lua interpreter requires enabled setjmp/longjmp for desired cpu/platform as it used in the errors resolver.
+$ make
+```
+
+##Flash the Nuttx to esp32:
+
+After the successful build you may flash the rom:
+```
+$ ./mk.sh
+```
+If your user is not enabled to read/write to /dev/ttyUSB0 - use `sudo ./mk.sh`.
+
+##To make the configuring tool:
+```
+$ git clone https://bitbucket.org/nuttx/tools.git tool
+$ cd tools/kconfig-frontends
+$ ./configure
+$ make
+$ sudo make install
+``
+(to use - run `make qconfig` inside the nuttx source tree)
+
+
+
 README
 ^^^^^^
 
