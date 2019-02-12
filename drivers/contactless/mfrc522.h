@@ -406,6 +406,7 @@
 
 #define MFRC522_SELFTEST_EN        9        /* the self test is enabled by value 1001b */
 
+
 #ifndef CONFIG_MFRC522_SPI_FREQ
 #  define CONFIG_MFRC522_SPI_FREQ  (5000000)
 #endif

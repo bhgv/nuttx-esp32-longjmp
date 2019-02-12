@@ -65,6 +65,21 @@ enum mfrc522_state_e
   MFRC522_STATE_DATA_READY,
 };
 
+enum {
+PICC_TYPE_UNKNOWN   ,
+PICC_TYPE_ISO_14443_4 , // PICC compliant with ISO/IEC 14443-4 
+PICC_TYPE_ISO_18092   ,   // PICC compliant with ISO/IEC 18092 (NFC)
+PICC_TYPE_MIFARE_MINI , // MIFARE Classic protocol, 320 bytes
+PICC_TYPE_MIFARE_1K   , // MIFARE Classic protocol, 1KB
+PICC_TYPE_MIFARE_4K   , // MIFARE Classic protocol, 4KB
+PICC_TYPE_MIFARE_UL   , // MIFARE Ultralight or Ultralight C
+PICC_TYPE_MIFARE_PLUS , // MIFARE Plus
+PICC_TYPE_MIFARE_DESFIRE, // MIFARE DESFire
+PICC_TYPE_TNP3XXX   , // Only mentioned in NXP AN 10833 MIFARE Type Identification Procedure
+PICC_TYPE_NOT_COMPLETE  = 0xff  // SAK indicates UID is not complete.
+};
+
+
 struct mfrc522_dev_s;
 
 struct picc_uid_s
@@ -73,6 +88,15 @@ struct picc_uid_s
   uint8_t  uid_data[10];
   uint8_t  sak;          /* The SAK (Select Acknowledge) return by the PICC */
 };
+
+
+#define MF_ACK      0xA     /* The MIFARE Classic uses a 4 bit ACK/NAK. Any other value than 0xA is NAK. */
+#define MF_KEY_SIZE   6     /* A Mifare Crypto1 key is 6 bytes. */
+
+
+typedef FAR struct {
+  uint8_t  keyByte[MF_KEY_SIZE];
+} MIFARE_Key;
 
 /****************************************************************************
  * Public Functions

@@ -389,6 +389,11 @@
 #define ESTRPIPE            143                         /* Linux errno extension */
 #define ESTRPIPE_STR        "Streams pipe error"
 
+#define ECOLLISION            144                         /* Linux errno extension */
+#define ECOLLISION_STR        "Collision error"
+#define EMIFARE_NACK            145                         /* Linux errno extension */
+#define EMIFARE_NACK_STR        "Milfare NAK error"
+
 #define __ELASTERROR        2000                        /* Users can add values starting here */
 
 /****************************************************************************
