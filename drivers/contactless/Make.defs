@@ -39,6 +39,7 @@ ifeq ($(CONFIG_DRIVERS_CONTACTLESS),y)
 
 ifeq ($(CONFIG_CL_MFRC522),y)
 CSRCS += mfrc522.c
+CSRCS += drv_cmd.c
 endif
 
 ifeq ($(CONFIG_CL_PN532),y)

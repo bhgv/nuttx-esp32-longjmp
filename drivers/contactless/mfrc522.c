@@ -64,7 +64,7 @@
 #define TRC(...) 
 #endif
 
-#if 1
+#if 0
 #define DBG(...) printf(__VA_ARGS__)
 #else
 #define DBG(...) 
@@ -170,7 +170,7 @@ void PICC_DumpMifareClassicSectorToSerial(FAR struct mfrc522_dev_s *dev,
 struct picc_uid_s uid;
 
 
-#define NEW_UID {0xDE, 0xAD, 0xBE, 0xEF}
+//#define NEW_UID {0xDE, 0xAD, 0xBE, 0xEF}
 
 
 
@@ -1176,7 +1176,7 @@ int mfrc522_picc_select(FAR struct mfrc522_dev_s *dev,
       /* Copy the found UID bytes from buffer[] to uid->uid_data[] */
 
 DBG("%d) b[0..3] = %2X, %2X, %2X, %2X\n", cascade_level, buffer[2], buffer[3], buffer[4], buffer[5]);
-	  
+  
 
       i = (buffer[2] == PICC_CMD_CT) ? 3 : 2;   /* source index in buffer[] */
       bytes_to_copy = (buffer[2] == PICC_CMD_CT) ? 3 : 4;
@@ -2447,26 +2447,35 @@ void mfrc522_init(FAR struct mfrc522_dev_s *dev)
    * all communication modes at all speeds.
    */
 
-  mfrc522_writeu8(dev, MFRC522_TMODE_REG, MFRC522_TAUTO);
+  
+  // Reset baud rates
+  mfrc522_writeu8(dev, MFRC522_TX_MODE_REG, 0x00);
+  mfrc522_writeu8(dev, MFRC522_RX_MODE_REG, 0x00);
+  // Reset ModWidthReg
+  mfrc522_writeu8(dev, MFRC522_MOD_WIDTH_REG, 0x26);
+
+  // When communicating with a PICC we need a timeout if something goes wrong.
+  // f_timer = 13.56 MHz / (2*TPreScaler+1) where TPreScaler = [TPrescaler_Hi:TPrescaler_Lo].
+  // TPrescaler_Hi are the four low bits in TModeReg. TPrescaler_Lo is TPrescalerReg.
+  mfrc522_writeu8(dev, MFRC522_TMODE_REG, MFRC522_TAUTO);  // TAuto=1; timer starts automatically at the end of the transmission in all communication modes at all speeds
 
   /* TPreScaler = TModeReg[3..0]:TPrescalerReg, ie: 0x0A9 = 169 =>
    * f_timer=40kHz, then the timer period will be 25us.
    */
-
-  mfrc522_writeu8(dev, MFRC522_TPRESCALER_REG, 0xA9);
+  mfrc522_writeu8(dev, MFRC522_TPRESCALER_REG, 0xA9);  // TPreScaler = TModeReg[3..0]:TPrescalerReg, ie 0x0A9 = 169 => f_timer=40kHz, ie a timer period of 25μs.
 
   /* Reload timer with 0x3E8 = 1000, ie 25ms before timeout. */
 
-  mfrc522_writeu8(dev, MFRC522_TRELOAD_REGH, 0x06);
+  mfrc522_writeu8(dev, MFRC522_TRELOAD_REGH, /*0x06*/0x03*8);  // Reload timer with 0x3E8 = 1000, ie 25ms before timeout.
   mfrc522_writeu8(dev, MFRC522_TRELOAD_REGL, 0xE8);
 
   /* Force 100% ASK modulation independent of the ModGsPReg setting */
 
-  mfrc522_writeu8(dev, MFRC522_TX_ASK_REG, MFRC522_FORCE_100ASK);
+  mfrc522_writeu8(dev, MFRC522_TX_ASK_REG, MFRC522_FORCE_100ASK);  // Default 0x00. Force a 100 % ASK modulation independent of the ModGsPReg register setting
 
   /* Set the preset value for the CRC to 0x6363 (ISO 14443-3 part 6.2.4) */
 
-  mfrc522_writeu8(dev, MFRC522_MODE_REG, 0x3D);
+  mfrc522_writeu8(dev, MFRC522_MODE_REG, 0x3D);  // Default 0x3F. Set the preset value for the CRC coprocessor for the CalcCRC command to 0x6363 (ISO 14443-3 part 6.2.4)
 
   /* Enable the Antenna pins */
 
@@ -2570,8 +2579,13 @@ int mfrc522_selftest(FAR struct mfrc522_dev_s *dev)
 }
 
 //----VVV----
-static int rd_cmd_i = -1;
+#include "drv_cmd.h"
+
+
+static parser_cb rd_cmd_foo = NULL;
 static int* rd_cmd_pars = NULL;
+
+static dev_databuf db = {NULL, 0, 0};
 //----AAA----
 
 /****************************************************************************
@@ -2601,8 +2615,6 @@ static int mfrc522_open(FAR struct file *filep)
 
   dev->state = MFRC522_STATE_IDLE;
 
-  rd_cmd_i = -1;
-  
   return OK;
 }
 
@@ -2627,7 +2639,9 @@ static int mfrc522_close(FAR struct file *filep)
 
   dev->state = MFRC522_STATE_NOT_INIT;
 
-  rd_cmd_i = -1;
+  rd_cmd_foo = NULL;
+
+  dev_databuf_deinit(&db);
 
   return OK;
 }
@@ -2636,28 +2650,6 @@ static int mfrc522_close(FAR struct file *filep)
 
 
 //----VVV----
-#define CMD_LEN_MAX  32
-
-
-typedef int (*parser_cb)(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[]);
-
-
-typedef struct {
-  char* name;
-  int  def_val;
-} parser_param;
-
-
-typedef struct {
-  char* name;
-
-  parser_cb cb;
-  
-  int par_cnt;
-  const parser_param* par_lst;
-} parser_cmd;
-
-
 int read_uid(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[]);
 int read_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[]);
 
@@ -2665,17 +2657,12 @@ int write_uid(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[
 int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[]);
 
 
-static parser_cmd commands_read[] = {
-  {"Ruid", read_uid, 0, NULL},
-  {"Rdump", read_dump, 0, NULL},
-  {NULL, NULL, 0, NULL},
-};
-
-
-static parser_cmd commands_write[] = {
-  {"Wuid", write_uid, 0, NULL},
-  {"Wdump", write_dump, 0, NULL},
-  {NULL, NULL, 0, NULL},
+static parser_cmd drv_commands[] = {
+  {"Ruid", read_uid, 0, 0, NULL},
+  {"Rdump", read_dump, 0, 0, NULL},
+  {"Wuid", write_uid, 1, 0, NULL},
+  {"Wdump", write_dump, 1, 0, NULL},
+  {NULL, NULL, 0, 0, NULL},
 };
 
 
@@ -2724,7 +2711,7 @@ uint8_t knownKeys[NR_KNOWN_KEYS][MF_KEY_SIZE] =  {
  * @return true when the given key worked, false otherwise.
  */
  
-bool try_key(FAR struct mfrc522_dev_s *dev, MIFARE_Key *key,
+int try_key(FAR struct mfrc522_dev_s *dev, MIFARE_Key *key,
           FAR struct picc_uid_s* uid, FAR char *out_buffer, size_t buflen)
 {
     int result = 0;
@@ -2748,15 +2735,14 @@ bool try_key(FAR struct mfrc522_dev_s *dev, MIFARE_Key *key,
     }
     else {
         // Successful read
-        //result = true;
         DBG("Success with key:");
         dump_byte_array(key->keyByte, MF_KEY_SIZE);
         DBG("\n");
         
         // Dump block data
-        DBG("Block %d:", block);
-        dump_byte_array1(buffer, 16); //omzetten van hex naar ASCI
-        DBG("\n");
+        //DBG("Block %d:", block);
+        //dump_byte_array1(buffer, 16); //omzetten van hex naar ASCI
+        //DBG("\n");
         
         for (int p = 0; p < 16; p++) //De 16 bits uit de block uitlezen
         {
@@ -2765,8 +2751,9 @@ bool try_key(FAR struct mfrc522_dev_s *dev, MIFARE_Key *key,
             return buflen;
 
           out_buffer[i] = buffer[p];
-          waarde [block][p] = buffer[p];
-          DBG("%d ", waarde[block][p]);
+          //waarde [block][p] = buffer[p];
+          //DBG("%d ", waarde[block][p]);
+          result += 16;
         }
         
         }
@@ -2785,7 +2772,11 @@ bool try_key(FAR struct mfrc522_dev_s *dev, MIFARE_Key *key,
 int read_uid(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[]){
   FAR struct inode *inode;
   FAR struct mfrc522_dev_s *dev;
-  FAR struct picc_uid_s uid;
+//  FAR struct picc_uid_s uid;
+
+  if(db.buf != NULL){
+    return dev_databuf_out(&db, buffer, buflen);
+    }
 
   DEBUGASSERT(filep);
   inode = filep->f_inode;
@@ -2803,39 +2794,39 @@ int read_uid(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[]
       return -EAGAIN;
     }
   TRC("%s:%d\n", __func__, __LINE__);
-  mfrc522_picc_select(dev, &uid, 0);
+  int res = mfrc522_picc_select(dev, &uid, 0);
 
-  DBG("%s:%d sak=%d, uid.size=%d, buflen=%d\n", __func__, __LINE__, uid.sak, uid.size, buflen);
+  printf("%s:%d res=%d, sak=%d, uid.size=%d, buflen=%d\n", __func__, __LINE__, res, uid.sak, uid.size, buflen);
+
+  if(res < 0)
+    return res;
+
   if (uid.sak != 0)
     {
-    TRC("%s:%d\n", __func__, __LINE__);
-      if (buffer && buflen >= 3)
-        {
-          int i, j;
-          TRC("%s:%d\n", __func__, __LINE__);
-          snprintf(buffer, buflen, "0x");
+      dev_databuf_init(&db, (char*)uid.uid_data, (int)uid.size);
 
-          TRC("%s:%d\n", __func__, __LINE__);
-          for(i = 0, j = 2; i < uid.size && j+2+1 <= buflen; i++, j += 2)
-            {
-              snprintf(&buffer[j], buflen-j, "%02X", uid.uid_data[i]);
-            }
-          PICC_HaltA(dev);       // Halt PICC
-          PCD_StopCrypto1(dev);  // Stop encryption on PCD
-          
-          return buflen;
-        }
+      TRC("%s:%d\n", __func__, __LINE__);
+
+//      PICC_HaltA(dev);       // Halt PICC
+//      PCD_StopCrypto1(dev);  // Stop encryption on PCD
+
+//      TRC("%s:%d\n", __func__, __LINE__);
+
+      return dev_databuf_out(&db, buffer, buflen);
     }
-  return OK;
+  return 0;
 }
 
 
 int read_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[]){
   FAR struct inode *inode;
   FAR struct mfrc522_dev_s *dev;
-  FAR struct picc_uid_s uid;
+//  FAR struct picc_uid_s uid;
+  int ret = 0;
 
-  int ret = OK;
+  if(db.buf != NULL){
+    return dev_databuf_out(&db, buffer, buflen);
+    }
 
   DEBUGASSERT(filep);
   inode = filep->f_inode;
@@ -2854,7 +2845,10 @@ int read_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[
     }
 
   TRC("%s:%d\n", __func__, __LINE__);
-  mfrc522_picc_select(dev, &uid, 0);
+  ret = mfrc522_picc_select(dev, &uid, 0);
+
+  if(ret < 0)
+    return ret;
 
   TRC("%s:%d\n", __func__, __LINE__);
   /* Try the known default keys */
@@ -2867,14 +2861,25 @@ int read_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[
 TRC("%s:%d\n", __func__, __LINE__);
       // Try the key
       TRC("%s:%d\n", __func__, __LINE__);
-      if (ret = try_key(dev, &key, &uid, buffer, buflen)) {
+
+      dev_databuf_init(&db, NULL, 1024);
+
+      if (ret = try_key(dev, &key, &uid, db.buf, 1024)) {
+          db.len = 1024;
+
           TRC("%s:%d\n", __func__, __LINE__);
           // Found and reported on the key and block,
           // no need to try other keys for this PICC
-         PICC_HaltA(dev);       // Halt PICC
-         PCD_StopCrypto1(dev);  // Stop encryption on PCD
+
+//          PICC_HaltA(dev);       // Halt PICC
+//          PCD_StopCrypto1(dev);  // Stop encryption on PCD
       
-          return ret;
+          return dev_databuf_out(&db, buffer, buflen);
+        }
+      else
+        {
+          dev_databuf_deinit(&db);
+          return 0;
         }
     }
   
@@ -3078,29 +3083,9 @@ int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars
   }
   PICC_HaltA(dev);       // Halt PICC
   PCD_StopCrypto1(dev);  // Stop encryption on PCD
+  
+  return OK;
 }
-
-
-
-static void help(){
-  int i;
-
-  printf("\nHelp:\n");
-  printf("\nRead commands:\n");
-  for(i = 0; commands_read[i].name != NULL; i++){
-    if(commands_read[i].cb != NULL)
-      printf("%s:..\n", commands_read[i].name);
-    }
-
-  printf("\nWrite commands:\n");
-  for(i = 0; commands_write[i].name != NULL; i++){
-    if(commands_write[i].cb != NULL)
-      printf("%s:..\n", commands_write[i].name);
-    }
-}
-
-
-
 
 //----AAA----
 
@@ -3118,116 +3103,12 @@ static void help(){
 static ssize_t mfrc522_read(FAR struct file *filep, FAR char *buffer,
     size_t buflen)
 {
-#if 0
-  FAR struct inode *inode;
-  FAR struct mfrc522_dev_s *dev;
-  //FAR struct picc_uid_s uid;
-
-  DEBUGASSERT(filep);
-  inode = filep->f_inode;
-
-  DEBUGASSERT(inode && inode->i_private);
-  dev = inode->i_private;
-
-  /* Is a card near? */
-
-  if (!mfrc522_picc_detect(dev))
-    {
-      mfrc522err("Card is not present!\n");
-      return -EAGAIN;
-    }
-#endif
-
   TRC("%s:%d\n", __func__, __LINE__);
-  if(rd_cmd_i >= 0){
-    TRC("%s:%d\n", __func__, __LINE__);
-    return commands_read[rd_cmd_i].cb(filep, buffer, buflen, NULL);
+  if(rd_cmd_foo != NULL){
+    TRC("%s:%d rd_cmd_foo=%X\n", __func__, __LINE__, rd_cmd_foo);
+    return rd_cmd_foo(filep, buffer, buflen, NULL);
     }
 
-  help();
-
-#if 0
-  /* Now read the UID */
-
-  mfrc522_picc_select(dev, &uid, 0);
-
-  if (uid.sak != 0)
-    {
-      if (buffer && buflen >= 3)
-        {
-          int i, j;
-          snprintf(buffer, buflen, "0x");
-
-          for(i = 0, j = 2; i < uid.size && j+2+1 <= buflen; i++, j += 2)
-            {
-              snprintf(&buffer[j], buflen-j, "%02X", uid.uid_data[i]);
-            }
-
-
-          //----VVV----
-              for (uint8_t i = 0; i < 6; i++) {
-                  key.keyByte[i] = 0xFF;
-              }
-          
-              printf("\n\nRead the card:\n");
-              printf("1>-------------------------------------------\n");
-              keuze1(dev);
-              
-              printf("\n\nSee what is in the variables:\n");
-              printf("2>-------------------------------------------\n");
-              keuze2();
-          
-              printf("\n\nWrite the card:\n");
-              printf("3>-------------------------------------------\n");
-              //keuze3(dev);
-              
-              for (uint8_t i = 0; i < 6; i++) {
-                key.keyByte[i] = 0xFF;
-              }
-              
-                // Dump UID
-                printf("Card UID:");
-                for (uint8_t i = 0; i < uid.size; i++) {
-                  printf(" %2X", uid.uid_data[i]);
-                } 
-                printf("\n");
-              
-                // Dump PICC type
-                uint8_t piccType = PICC_GetType(dev, uid.sak);
-                
-                printf("PICC type: %s (SAK %d)\n", PICC_GetTypeName(dev, piccType), uid.sak);
-                if (  piccType != PICC_TYPE_MIFARE_MINI 
-                  &&  piccType != PICC_TYPE_MIFARE_1K
-                  &&  piccType != PICC_TYPE_MIFARE_4K) {
-                  printf("This sample only works with MIFARE Classic cards.\n");
-                  return buflen;
-                }
-
-
-
-                  // Set new UID
-                  uint8_t newUid[] = NEW_UID;
-                  if ( MIFARE_SetUid(dev, newUid, (uint8_t)4, true) ) {
-                    printf("Wrote new UID to card.\n");
-                  }
-                  
-                  // Halt PICC and re-select it so DumpToSerial doesn't get confused
-                  PICC_HaltA(dev);
-                  if ( ! mfrc522_picc_detect(dev) || ! PICC_ReadCardSerial(dev) ) {
-                    return buflen;
-                  }
-                  
-                  // Dump the new memory contents
-                  printf("New UID and contents:\n");
-                  PICC_DumpToSerial(dev, &uid);
-
-          //----AAA----
-
-
-          return buflen;
-        }
-    }
-#endif
   return OK;
 }
 
@@ -3239,73 +3120,14 @@ static ssize_t mfrc522_read(FAR struct file *filep, FAR char *buffer,
 static ssize_t mfrc522_write(FAR struct file *filep, FAR const char *buffer,
      size_t buflen)
 {
-  int j, i, idat=-1, ipar=-1;
-  char rd_cmd[CMD_LEN_MAX+1];
-#if 0
-  FAR struct inode *inode;
-  FAR struct mfrc522_dev_s *dev;
-  FAR struct picc_uid_s uid;
+  int idat=-1, flags = 0;
 
-//  uint8_t validbits = 0;
-//  uint8_t i, j;
+  rd_cmd_foo = parse_drv_cmd(drv_commands, buffer, buflen, &flags, &idat);
 
-TRC("%s:%d\n", __func__, __LINE__);
+  if(rd_cmd_foo == NULL)
+    help_drv_cmds(drv_commands);
 
-  DEBUGASSERT(filep);
-  inode = filep->f_inode;
-
-  TRC("%s:%d\n", __func__, __LINE__);
-  DEBUGASSERT(inode && inode->i_private);
-  dev = inode->i_private;
-#endif
-
-  TRC("%s:%d\n", __func__, __LINE__);
-  for(i = 0; i < buflen && i < CMD_LEN_MAX && buffer[i] != ':' && buffer[i] != ','; i++){
-    DBG("%c", buffer[i]);
-    rd_cmd[i] = buffer[i];
-    }
-  DBG("%c\n", buffer[i]);
-  rd_cmd[i] = '\0';
-
-  TRC("%s:%d i=%d buflen=%d\n", __func__, __LINE__, i, buflen);
-  if(i < buflen){
-    if(buffer[i] == ',')
-      ipar = i+1;
-    else
-      ipar = -1;
-    
-    TRC("%s:%d\n", __func__, __LINE__);
-    for(idat = 0; idat < buflen && buffer[idat] != ':'; idat++);
-    TRC("%s:%d\n", __func__, __LINE__);
-    if(idat < buflen){
-      idat++;
-      }
-    }else{
-      return -EIO;
-    }
-
-  TRC("%s:%d\n", __func__, __LINE__);
-  for(i = 0; commands_read[i].name != NULL; i++){
-    if(!strcmp(commands_read[i].name, rd_cmd)){
-      if(commands_read[i].cb != NULL)
-        TRC("%s:%d\n", __func__, __LINE__);
-        rd_cmd_i = i;
-        return buflen;
-      }
-    }
-
-  TRC("%s:%d\n", __func__, __LINE__);
-  for(i = 0; commands_write[i].name != NULL; i++){
-    if(!strcmp(commands_write[i].name, rd_cmd)){
-      if(commands_write[i].cb != NULL)
-        return commands_write[i].cb(filep, &buffer[idat], buflen - idat, NULL);
-      }
-    }
-  TRC("%s:%d\n", __func__, __LINE__);
-
-  help();
-
-  return OK;
+  return buflen;
 }
 
 /****************************************************************************
@@ -3379,6 +3201,10 @@ int mfrc522_register(FAR const char *devpath, FAR struct spi_dev_s *spi)
   FAR struct mfrc522_dev_s *dev;
   uint8_t fwver;
   int ret = 0;
+
+  db.buf = NULL;
+  db.len = 0;
+  db.i = 0;
 
   /* Initialize the MFRC522 device structure */
 
