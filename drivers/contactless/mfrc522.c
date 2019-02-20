@@ -528,33 +528,28 @@ int mfrc522_comm_picc(FAR struct mfrc522_dev_s *dev, uint8_t command,
   uint8_t txlastbits = validbits ? *validbits : 0;
   uint8_t bitframing = (rxalign << 4) + txlastbits;
 
-TRC("%s:%d\n", __func__, __LINE__);
   /* Stop any active command */
 
   mfrc522_writeu8(dev, MFRC522_COMMAND_REG, MFRC522_IDLE_CMD);
 
   /* Clear all seven interrupt request bits */
 
-TRC("%s:%d\n", __func__, __LINE__);
-  value = mfrc522_readu8(dev, MFRC522_COM_IRQ_REG);
-  mfrc522_writeu8(dev, MFRC522_COM_IRQ_REG, value | MFRC522_COM_IRQ_MASK);
+//  value = mfrc522_readu8(dev, MFRC522_COM_IRQ_REG);
+//  mfrc522_writeu8(dev, MFRC522_COM_IRQ_REG, value | MFRC522_COM_IRQ_MASK);
+  mfrc522_writeu8(dev, MFRC522_COM_IRQ_REG, MFRC522_COM_IRQ_MASK);
 
-TRC("%s:%d\n", __func__, __LINE__);
   /* Flush all bytes in the FIFO */
 
   mfrc522_writeu8(dev, MFRC522_FIFO_LEVEL_REG, MFRC522_FLUSH_BUFFER);
 
-TRC("%s:%d\n", __func__, __LINE__);
   /* Write data to FIFO */
 
   mfrc522_writeblk(dev, MFRC522_FIFO_DATA_REG, send_data, send_len);
 
-TRC("%s:%d\n", __func__, __LINE__);
   /* Bit adjustments */
 
   mfrc522_writeu8(dev, MFRC522_BIT_FRAMING_REG, bitframing);
 
-TRC("%s:%d\n", __func__, __LINE__);
   /* Execute command */
 
   mfrc522_writeu8(dev, MFRC522_COMMAND_REG, command);
@@ -565,7 +560,7 @@ TRC("%s:%d\n", __func__, __LINE__);
    */
 
   clock_gettime(CLOCK_REALTIME, &tstart);
-  tstart.tv_nsec += 200000;
+  tstart.tv_nsec += 500000;
   if (tstart.tv_nsec >= 1000 * 1000 * 1000)
     {
       tstart.tv_sec++;
@@ -576,7 +571,6 @@ TRC("%s:%d\n", __func__, __LINE__);
 
   if (command == MFRC522_TRANSCV_CMD)
     {
-TRC("%s:%d\n", __func__, __LINE__);
       value = mfrc522_readu8(dev, MFRC522_BIT_FRAMING_REG);
       mfrc522_writeu8(dev, MFRC522_BIT_FRAMING_REG, value | MFRC522_START_SEND);
     }
@@ -587,14 +581,12 @@ TRC("%s:%d\n", __func__, __LINE__);
     {
       uint8_t irqsreg;
 
-TRC("%s:%d\n", __func__, __LINE__);
       irqsreg = mfrc522_readu8(dev, MFRC522_COM_IRQ_REG);
 
       /* If at least an of selected IRQ happened */
 
       if (irqsreg & waitirq)
         {
-TRC("%s:%d\n", __func__, __LINE__);
           break;
         }
 
@@ -602,7 +594,6 @@ TRC("%s:%d\n", __func__, __LINE__);
 
       if (irqsreg & MFRC522_TIMER_IRQ)
         {
-TRC("%s:%d\n", __func__, __LINE__);
           return -ETIMEDOUT;
         }
 
@@ -612,21 +603,18 @@ TRC("%s:%d\n", __func__, __LINE__);
 
       if ((tend.tv_sec > tstart.tv_sec) && (tend.tv_nsec > tstart.tv_nsec))
         {
-TRC("%s:%d\n", __func__, __LINE__);
           return -ETIMEDOUT;
         }
     }
 
   /* Read error register to verify if there are any issue */
 
-TRC("%s:%d\n", __func__, __LINE__);
   errors = mfrc522_readu8(dev, MFRC522_ERROR_REG);
 
   /* Check for Protocol error */
 
   if (errors & (MFRC522_PROTO_ERR))
     {
-TRC("%s:%d\n", __func__, __LINE__);
       return -EPROTO;
     }
 
@@ -634,7 +622,6 @@ TRC("%s:%d\n", __func__, __LINE__);
 
   if (errors & (MFRC522_PARITY_ERR | MFRC522_BUF_OVFL_ERR))
     {
-TRC("%s:%d\n", __func__, __LINE__);
       return -EIO;
     }
 
@@ -642,7 +629,6 @@ TRC("%s:%d\n", __func__, __LINE__);
 
   if (errors & MFRC522_COLL_ERR)
     {
-TRC("%s:%d\n", __func__, __LINE__);
       return -EBUSY;            /* should it be EAGAIN ? */
     }
 
@@ -654,14 +640,12 @@ TRC("%s:%d\n", __func__, __LINE__);
 
       /* Number of bytes in the FIFO */
 
-TRC("%s:%d\n", __func__, __LINE__);
       nbytes = mfrc522_readu8(dev, MFRC522_FIFO_LEVEL_REG);
 
       /* Returned more bytes than the expected */
 
       if (nbytes > *back_len)
         {
-TRC("%s:%d\n", __func__, __LINE__);
           return -ENOMEM;
         }
 
@@ -669,12 +653,10 @@ TRC("%s:%d\n", __func__, __LINE__);
 
       /* Read the data from FIFO */
 
-TRC("%s:%d\n", __func__, __LINE__);
       mfrc522_readblk(dev, MFRC522_FIFO_DATA_REG, back_data, nbytes, rxalign);
 
       /* RxLastBits[2:0] indicates the number of valid bits received */
 
-TRC("%s:%d\n", __func__, __LINE__);
       vbits = mfrc522_readu8(dev, MFRC522_CONTROL_REG)
               & MFRC522_RX_LAST_BITS_MASK;
 
@@ -694,7 +676,6 @@ TRC("%s:%d\n", __func__, __LINE__);
 
       if (*back_len == 1 && vbits == 4)
         {
-TRC("%s:%d\n", __func__, __LINE__);
           return -EACCES;
         }
 
@@ -702,24 +683,20 @@ TRC("%s:%d\n", __func__, __LINE__);
 
       if (*back_len < 2 || vbits != 0)
         {
-TRC("%s:%d\n", __func__, __LINE__);
           return -EPERM;
         }
 
       /* Verify CRC_A */
 
-TRC("%s:%d\n", __func__, __LINE__);
       ret = mfrc522_calc_crc(dev, &back_data[0], *back_len - 2, &ctrlbuf[0]);
       if (ret != OK)
         {
-TRC("%s:%d ret=%d\n", __func__, __LINE__, ret);
           return ret;
         }
 
       if ((back_data[*back_len - 2] != ctrlbuf[0]) ||
           (back_data[*back_len - 1] != ctrlbuf[1]))
         {
-TRC("%s:%d\n", __func__, __LINE__);
           return -EFAULT;
         }
     }
@@ -899,6 +876,7 @@ int mfrc522_picc_select(FAR struct mfrc522_dev_s *dev,
   int result;
   uint8_t i;
   uint8_t value;
+  uint8_t check_bit;
   uint8_t count;
 
   /* The first index in uid->data[] that is used in the current Cascade Level */
@@ -907,7 +885,7 @@ int mfrc522_picc_select(FAR struct mfrc522_dev_s *dev,
 
   /* The number of known UID bits in the current Cascade Level. */
 
-  uint8_t curr_level_known_bits;
+  int8_t curr_level_known_bits;
 
   /* The SELECT/ANTICOLLISION uses a 7 byte standard frame + 2 bytes CRC_A */
 
@@ -928,6 +906,28 @@ int mfrc522_picc_select(FAR struct mfrc522_dev_s *dev,
   uint8_t *resp_buf;
   uint8_t resp_len;
 
+	// Description of buffer structure:
+	//		Byte 0: SEL 				Indicates the Cascade Level: PICC_CMD_SEL_CL1, PICC_CMD_SEL_CL2 or PICC_CMD_SEL_CL3
+	//		Byte 1: NVB					Number of Valid Bits (in complete command, not just the UID): High nibble: complete bytes, Low nibble: Extra bits. 
+	//		Byte 2: UID-data or CT		See explanation below. CT means Cascade Tag.
+	//		Byte 3: UID-data
+	//		Byte 4: UID-data
+	//		Byte 5: UID-data
+	//		Byte 6: BCC					Block Check Character - XOR of bytes 2-5
+	//		Byte 7: CRC_A
+	//		Byte 8: CRC_A
+	// The BCC and CRC_A are only transmitted if we know all the UID bits of the current Cascade Level.
+	//
+	// Description of bytes 2-5: (Section 6.5.4 of the ISO/IEC 14443-3 draft: UID contents and cascade levels)
+	//		UID size	Cascade level	Byte2	Byte3	Byte4	Byte5
+	//		========	=============	=====	=====	=====	=====
+	//		 4 bytes		1			uid0	uid1	uid2	uid3
+	//		 7 bytes		1			CT		uid0	uid1	uid2
+	//						2			uid3	uid4	uid5	uid6
+	//		10 bytes		1			CT		uid0	uid1	uid2
+	//						2			CT		uid3	uid4	uid5
+	//						3			uid6	uid7	uid8	uid9
+
   /* Sanity check */
 
   if (validbits > 80)
@@ -938,7 +938,7 @@ int mfrc522_picc_select(FAR struct mfrc522_dev_s *dev,
   /* Force clear of received bits if a collision is detected */
 
   value = mfrc522_readu8(dev, MFRC522_COLL_REG);
-  mfrc522_writeu8(dev, MFRC522_COLL_REG, value & MFRC522_VALUES_AFTER_COLL);
+  mfrc522_writeu8(dev, MFRC522_COLL_REG, value & (~MFRC522_VALUES_AFTER_COLL) );
 
   /* Repeat cascade level loop until we have a complete UID */
 
@@ -1139,12 +1139,14 @@ int mfrc522_picc_select(FAR struct mfrc522_dev_s *dev,
 
               /* The bit to modify */
 
-              count = (curr_level_known_bits - 1) % 8;
+              count = curr_level_known_bits % 8; //(curr_level_known_bits - 1) % 8;
+              check_bit = (curr_level_known_bits - 1) % 8;
 
               /* First byte is index 0. */
 
               i = 1 + (curr_level_known_bits / 8) + (count ? 1 : 0);
-              buffer[i] |= (1 << count);
+//              buffer[i] |= (1 << count);
+              buffer[i] |= (1 << check_bit);
             }
           else if (result != OK)
             {
@@ -1174,9 +1176,6 @@ int mfrc522_picc_select(FAR struct mfrc522_dev_s *dev,
 
       /* We do not check the CBB - it was constructed by us above. */
       /* Copy the found UID bytes from buffer[] to uid->uid_data[] */
-
-DBG("%d) b[0..3] = %2X, %2X, %2X, %2X\n", cascade_level, buffer[2], buffer[3], buffer[4], buffer[5]);
-  
 
       i = (buffer[2] == PICC_CMD_CT) ? 3 : 2;   /* source index in buffer[] */
       bytes_to_copy = (buffer[2] == PICC_CMD_CT) ? 3 : 4;
@@ -1306,7 +1305,6 @@ int PCD_Authenticate(FAR struct mfrc522_dev_s *dev,
   for (uint8_t i = 0; i < 4; i++) {        // The last 4 bytes of the UID
     sendData[8+i] = uid->uid_data[i+uid->size-4];
   }
-TRC("%s:%d\n", __func__, __LINE__);
   
   // Start the authentication.
   return mfrc522_comm_picc(dev, MFRC522_MF_AUTH_CMD, waitIRq, &sendData[0], sizeof(sendData)
@@ -2466,7 +2464,7 @@ void mfrc522_init(FAR struct mfrc522_dev_s *dev)
 
   /* Reload timer with 0x3E8 = 1000, ie 25ms before timeout. */
 
-  mfrc522_writeu8(dev, MFRC522_TRELOAD_REGH, /*0x06*/0x03*8);  // Reload timer with 0x3E8 = 1000, ie 25ms before timeout.
+  mfrc522_writeu8(dev, MFRC522_TRELOAD_REGH, 0x03);		// Reload timer with 0x3E8 = 1000, ie 25ms before timeout.
   mfrc522_writeu8(dev, MFRC522_TRELOAD_REGL, 0xE8);
 
   /* Force 100% ASK modulation independent of the ModGsPReg setting */
@@ -2785,32 +2783,23 @@ int read_uid(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[]
   dev = inode->i_private;
 
   /* Is a card near? */
-  TRC("%s:%d\n", __func__, __LINE__);
 
   if (!mfrc522_picc_detect(dev))
     {
-    TRC("%s:%d\n", __func__, __LINE__);
       mfrc522err("Card is not present!\n");
       return -EAGAIN;
     }
-  TRC("%s:%d\n", __func__, __LINE__);
   int res = mfrc522_picc_select(dev, &uid, 0);
 
-  printf("%s:%d res=%d, sak=%d, uid.size=%d, buflen=%d\n", __func__, __LINE__, res, uid.sak, uid.size, buflen);
-
-  if(res < 0)
+  if(uid.size <= 0)
     return res;
 
-  if (uid.sak != 0)
+  if (uid.size > 0)
     {
       dev_databuf_init(&db, (char*)uid.uid_data, (int)uid.size);
 
-      TRC("%s:%d\n", __func__, __LINE__);
-
 //      PICC_HaltA(dev);       // Halt PICC
 //      PCD_StopCrypto1(dev);  // Stop encryption on PCD
-
-//      TRC("%s:%d\n", __func__, __LINE__);
 
       return dev_databuf_out(&db, buffer, buflen);
     }
@@ -2836,21 +2825,17 @@ int read_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[
 
   /* Is a card near? */
 
-  TRC("%s:%d\n", __func__, __LINE__);
   if (!mfrc522_picc_detect(dev))
     {
-      TRC("%s:%d\n", __func__, __LINE__);
       mfrc522err("Card is not present!\n");
       return -EAGAIN;
     }
 
-  TRC("%s:%d\n", __func__, __LINE__);
   ret = mfrc522_picc_select(dev, &uid, 0);
 
-  if(ret < 0)
+  if(uid.size <= 0)
     return ret;
 
-  TRC("%s:%d\n", __func__, __LINE__);
   /* Try the known default keys */
   MIFARE_Key key;
   for (uint8_t k = 0; k < NR_KNOWN_KEYS; k++) {
@@ -2858,16 +2843,13 @@ int read_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[
       for (uint8_t i = 0; i < MF_KEY_SIZE; i++) {
           key.keyByte[i] = knownKeys[k][i];
         }
-TRC("%s:%d\n", __func__, __LINE__);
       // Try the key
-      TRC("%s:%d\n", __func__, __LINE__);
 
       dev_databuf_init(&db, NULL, 1024);
 
       if (ret = try_key(dev, &key, &uid, db.buf, 1024)) {
           db.len = 1024;
 
-          TRC("%s:%d\n", __func__, __LINE__);
           // Found and reported on the key and block,
           // no need to try other keys for this PICC
 
@@ -2904,22 +2886,18 @@ int write_uid(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[
   DEBUGASSERT(inode && inode->i_private);
   dev = inode->i_private;
 
-  TRC("%s:%d bf=%x, ln=%d (%2x)\n", __func__, __LINE__, buffer, buflen, buffer[buflen-1]);
   if(buffer == NULL || buflen < 4*2 + 1 || buflen % 2 == 0 /*|| buffer[buflen-1] != '\0'*/)
     return -EIO;
 
-  TRC("%s:%d\n", __func__, __LINE__);
   if(buffer[0] == '0' && (buffer[1] == 'x' || buffer[1] == 'X'))
     i = 2;
   else
     i = 0;
   
-  TRC("%s:%d\n", __func__, __LINE__);
   memset(uid.uid_data, 0, 10);
 
   /* convert UID string to UID binary */
 
-  TRC("%s:%d\n", __func__, __LINE__);
   for(j = 0; j < 10 && i < buflen-2 && isxdigit(buffer[i]); i+=2, j++)
     {
       char s[3];
@@ -2933,15 +2911,12 @@ int write_uid(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[
   
       validbits += 8;
       }
-  TRC("%s:%d\n", __func__, __LINE__);
-  printf("validbits = %d\n", validbits);
 
   PICC_HaltA(dev);       // Halt PICC
   PCD_StopCrypto1(dev);  // Stop encryption on PCD
 
   /* Is a card near? */
   
-  TRC("%s:%d\n", __func__, __LINE__);
   if (!mfrc522_picc_detect(dev))
     {
       mfrc522err("Card is not present!\n");
@@ -2950,9 +2925,7 @@ int write_uid(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars[
 
   /* Now write the UID */
 
-  TRC("%s:%d\n", __func__, __LINE__);
   ret = mfrc522_picc_select(dev, &uid, validbits);
-  DBG("ret = %d\n", ret);
 
   PICC_HaltA(dev);       // Halt PICC
   PCD_StopCrypto1(dev);  // Stop encryption on PCD
@@ -3002,7 +2975,6 @@ int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars
 
   DBG("Insert new card...");
   
-  TRC("%s:%d\n", __func__, __LINE__);
   // Look for new cards
   if (!mfrc522_picc_detect(dev))
     {
@@ -3010,7 +2982,6 @@ int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars
       return -EAGAIN;
     }
   
-  TRC("%s:%d\n", __func__, __LINE__);
   // Select one of the cards
   if ( !mfrc522_picc_select(dev, &uid, validbits))
     {
@@ -3018,7 +2989,6 @@ int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars
       return -EAGAIN;
     }
 
-  TRC("%s:%d\n", __func__, __LINE__);
   // Show some details of the PICC (that is: the tag/card)
   DBG("Card UID:");
   dump_byte_array(uid.uid_data, uid.size);
@@ -3041,14 +3011,12 @@ int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars
       key.keyByte[i] = 0xFF;
   }
 
-  TRC("%s:%d\n", __func__, __LINE__);
   for(int i = 4; i <= 62; i++){ //De blocken 4 tot 62 kopieren, behalve al deze onderstaande blocken (omdat deze de authenticatie blokken zijn)
     if(i == 7 || i == 11 || i == 15 || i == 19 || i == 23 || i == 27 || i == 31 || i == 35 || i == 39 || i == 43 || i == 47 || i == 51 || i == 55 || i == 59){
       i++;
     }
     block = i;
 
-  TRC("%s:%d\n", __func__, __LINE__);
   // Authenticate using key A
   DBG("Authenticating using key A...\n");
   status = PCD_Authenticate(dev, PICC_CMD_MF_AUTH_KEY_A, block, &key, &uid);
@@ -3057,7 +3025,6 @@ int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars
     return -EIO;
   }
 
-  TRC("%s:%d\n", __func__, __LINE__);
   // Authenticate using key B
   DBG("Authenticating again using key B...\n");
   status = PCD_Authenticate(dev, PICC_CMD_MF_AUTH_KEY_B, block, &key, &uid);
@@ -3071,12 +3038,10 @@ int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars
  
   dump_byte_array(waarde[block], 16); 
  
-  TRC("%s:%d\n", __func__, __LINE__);
   status = MIFARE_Write(dev, block, waarde[block], 16);
   if (status != OK) {
     DBG("MIFARE_Write() failed: %s\n", GetStatusCodeName(dev, status));
   }
-  TRC("%s:%d\n", __func__, __LINE__);
 
   DBG("\n\n");
 
@@ -3103,9 +3068,7 @@ int write_dump(FAR struct file *filep, FAR char *buffer, size_t buflen, int pars
 static ssize_t mfrc522_read(FAR struct file *filep, FAR char *buffer,
     size_t buflen)
 {
-  TRC("%s:%d\n", __func__, __LINE__);
   if(rd_cmd_foo != NULL){
-    TRC("%s:%d rd_cmd_foo=%X\n", __func__, __LINE__, rd_cmd_foo);
     return rd_cmd_foo(filep, buffer, buflen, NULL);
     }
 
